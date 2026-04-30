@@ -22,8 +22,7 @@ jobs:
       - name: Build
         run: |
           dotnet publish apic/apic.csproj -c Release -r  win-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
-          # dir apic/bin/Release/net10.0/win-x64/apic.exe
-            dir   /apic/bin/Release/net10.0/linux-x64/publish/
+          dir apic/bin/Release/net10.0/win-x64/publish/
       - name: Release
         if: github.repository_owner == 'myridia'                  
         uses: svenstaro/upload-release-action@v2
