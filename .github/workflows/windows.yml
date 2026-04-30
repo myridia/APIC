@@ -22,7 +22,7 @@ jobs:
       - name: Build
         run: |
           dotnet publish apic/apic.csproj -c Release -r linux-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
-          dir apic/bin/Release/
+          dir apic/bin/Release/net10.0
           
       #- name: Release
       #  if: github.repository_owner == 'myridia'                  
