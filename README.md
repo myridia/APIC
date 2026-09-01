@@ -1,3 +1,4 @@
+<img src="APIC.svg" alt="APIC" width="120">
 # APIC
 APIC API: Application Programming Interface Connector - API (for QuickBooks Desktop)
 
