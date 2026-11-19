@@ -82,6 +82,13 @@ namespace apic
             {
             }
         }
+
+        public override async Task StopAsync(CancellationToken cancellationToken)
+        {
+            Log.Information("Service stopping - closing QuickBooks session");
+            _server.Close_qb_session();
+            await base.StopAsync(cancellationToken);
+        }
     }
 
     class ApicClass
@@ -94,6 +101,7 @@ namespace apic
         public string Config_file { get; set; }
         public string Quickbooks_file { get; set; }
         public dynamic Rp { get; set; }
+        public string Session { get; set; }
         public TomlTable Config { get; set; }
 
         private const int QbFileOpenMultiUser = 2;
@@ -147,6 +155,48 @@ namespace apic
         }
 
 
+
+        public dynamic Ensure_session()
+        {
+            if (Rp != null && Session != null)
+            {
+                Log.Information("Ensure_session: reusing ticket " + Session);
+                return Rp;
+            }
+            Log.Information("Ensure_session: creating new connection and session");
+            Rp = CreateRequestProcessor();
+            Log.Information("Ensure_session: calling OpenConnection");
+            Rp.OpenConnection("APIc", "APIc");
+            Log.Information("Ensure_session: OpenConnection returned");
+            Log.Information("Ensure_session: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
+            Session = Rp.BeginSession(Config["quickbooks_file"].ToString(), QbFileOpenMultiUser);
+            Log.Information("Ensure_session: BeginSession OK, ticket " + Session);
+            return Rp;
+        }
+
+        public void Mark_session_dead()
+        {
+            try { if (Rp != null) Rp.CloseConnection(); } catch { }
+            Rp = null;
+            Session = null;
+        }
+
+        public void Close_qb_session()
+        {
+            try
+            {
+                if (Rp != null && Session != null)
+                {
+                    Log.Information("Close_qb_session: EndSession and CloseConnection");
+                    Rp.EndSession(Session);
+                    Rp.CloseConnection();
+                }
+            }
+            catch (Exception ex) { Log.Information("Close_qb_session failed (best effort): " + ex.Message); }
+            Rp = null;
+            Session = null;
+        }
+
         public ApicClass()
         {
             Config = Get_config();
@@ -197,6 +247,10 @@ namespace apic
 
             server.Start();
             Log.Information("Server started on " + Ipaddress + ":" + Config["port"]);
+            AppDomain.CurrentDomain.ProcessExit += (s, e) =>
+            {
+                Close_qb_session();
+            };
             if (Environment.UserInteractive)
             {
                 Console.ReadLine();
@@ -440,7 +494,6 @@ namespace apic
         public List<string> Send_xmls_impl(List<string> xmls)
         {
             string qbfile = Config["quickbooks_file"].ToString();
-            string session = null;
             string response = null;
 
             List<string> responses = new List<string>();
@@ -448,13 +501,7 @@ namespace apic
             Log.Information("Send_xmls_impl: entering, " + xmls.Count + " request(s), company file: " + qbfile);
             try
             {
-                Rp = CreateRequestProcessor();
-                Log.Information("Send_xmls_impl: calling OpenConnection(\"APIc\", \"APIc\")");
-                Rp.OpenConnection("APIc", "APIc");
-                Log.Information("Send_xmls_impl: OpenConnection returned");
-                Log.Information("Send_xmls_impl: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
-                session = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
-                Log.Information("Send_xmls_impl: BeginSession OK, ticket: " + session);
+                Ensure_session();
 
                 int c = xmls.Count;
                 int done = 0;
@@ -465,37 +512,19 @@ namespace apic
                         Log.Information("process " + (done + 1) + " of " + xmls.Count + " (payload " + (i == null ? 0 : i.Length) + " chars)");
                     }
 
-                    response = Rp.ProcessRequest(session, i);
+                    response = Rp.ProcessRequest(Session, i);
                     responses.Add(response);
                     c--;
                     done++;
                 }
-
-                System.Threading.Thread.Sleep(2000);
             }
             catch (Exception ex)
             {
                 string error = "COM Error Description = " + ex.Message + "COM error";
                 Console.WriteLine(error);
                 Log.Information("Send_xmls_impl failed: " + ex.ToString());
+                Mark_session_dead();
                 responses.Add(error);
-
-            }
-            finally
-            {
-                Log.Information("...closing");
-                if (session != null)
-                {
-                    Log.Information("...close session");
-                    Rp.EndSession(session);
-                }
-                if (Rp != null)
-                {
-                    Log.Information("...close connection");
-                    Rp.CloseConnection();
-                    Rp = null;
-                    System.Threading.Thread.Sleep(2000);
-                }
             }
             return responses;
         }
@@ -518,43 +547,21 @@ namespace apic
         public string Send_xml_impl(String xml_str)
         {
             string qbfile = Config["quickbooks_file"].ToString();
-            string ticket = null;
             string response = null;
 
-            List<string> responses = new List<string>();
             Log.Information("Send_xml_impl: entering, payload length: " + (xml_str == null ? 0 : xml_str.Length) + ", company file: " + qbfile);
             try
             {
-                Rp = CreateRequestProcessor();
-                Log.Information("Send_xml_impl: calling OpenConnection(\"APIc\", \"APIc\")");
-                Rp.OpenConnection("APIc", "APIc");
-                Log.Information("Send_xml_impl: OpenConnection returned");
-                Log.Information("Send_xml_impl: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
-                ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
-                Log.Information("Send_xml_impl: BeginSession OK, ticket: " + ticket);
+                Ensure_session();
                 Log.Information("Send_xml_impl: calling ProcessRequest");
-                response = Rp.ProcessRequest(ticket, xml_str);
+                response = Rp.ProcessRequest(Session, xml_str);
                 Log.Information("Send_xml_impl: ProcessRequest returned (" + (response == null ? 0 : response.Length) + " chars)");
-                System.Threading.Thread.Sleep(2000);
             }
             catch (Exception ex)
             {
                 Log.Information("Send_xml_impl failed: " + ex.ToString());
+                Mark_session_dead();
                 return "COM Error Description = " + ex.Message + "COM error";
-
-            }
-            finally
-            {
-                if (ticket != null)
-                {
-                    Rp.EndSession(ticket);
-                }
-                if (Rp != null)
-                {
-                    Rp.CloseConnection();
-                    Rp = null;
-                    System.Threading.Thread.Sleep(2000);
-                }
             }
             return response;
         }
@@ -649,54 +656,16 @@ namespace apic
             if (File.Exists(@Config["quickbooks_file"]))
             {
                 Log.Information("File OK");
-                if (Rp == null)
+                try
                 {
-                    Log.Information("Rp is null");
-                    string ticket = null;
-
-
-
-                    try
-                    {
-                        Log.Information("...request");
-                        Log.Information("Test_qb_access_impl: creating request processor");
-                        Rp = CreateRequestProcessor();
-                        Log.Information("Test_qb_access_impl: calling OpenConnection");
-                        Rp.OpenConnection("APIc", "APIc");
-                        Log.Information("Test_qb_access_impl: OpenConnection returned");
-                        Log.Information("Access your company file - Testing!");
-                        Log.Information("Test_qb_access_impl: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
-                        ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
-                        Log.Information("Test_qb_access_impl: BeginSession OK, ticket: " + ticket);
-                        Log.Information("Access granted");
-                        r = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Information("Error");
-                        Log.Information(ex.ToString());
-                    }
-                    finally
-                    {
-                        if (ticket != null)
-                        {
-                            Log.Information("Test_qb_access_impl: EndSession");
-                            Rp.EndSession(ticket);
-                            Rp = null;
-                        }
-                        if (Rp != null)
-                        {
-                            Log.Information("Test_qb_access_impl: CloseConnection");
-                            Rp.CloseConnection();
-                            Rp = null;
-                        }
-                    }
-
-
-
-                    //r = true;
-
-
+                    Ensure_session();
+                    Log.Information("Access granted (ticket reused/created: " + Session + ")");
+                    r = true;
+                }
+                catch (Exception ex)
+                {
+                    Log.Information("Error");
+                    Log.Information(ex.ToString());
                 }
             }
 
