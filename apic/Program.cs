@@ -3,6 +3,7 @@
 using System.IO;
 using Tommy;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Net;
@@ -45,16 +46,50 @@ namespace apic
 
         private const int QbFileOpenMultiUser = 2;
 
+        private static T RunOnSta<T>(Func<T> work)
+        {
+            T result = default;
+            Exception error = null;
+            Thread t = new Thread(() =>
+            {
+                Log.Information("RunOnSta: worker thread started (STA)");
+                try
+                {
+                    result = work();
+                    Log.Information("RunOnSta: worker thread finished");
+                }
+                catch (Exception e)
+                {
+                    error = e;
+                    Log.Information("RunOnSta: worker thread threw " + e.ToString());
+                }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+            t.Join();
+            if (error != null) throw error;
+            return result;
+        }
+
         private static dynamic CreateRequestProcessor()
         {
-            Type t = Type.GetTypeFromProgID("QBXMLRP2.RequestProcessor")
-                  ?? Type.GetTypeFromProgID("QBXMLRP2.RequestProcessor.1");
+            Log.Information("CreateRequestProcessor: trying QBXMLRP2.RequestProcessor");
+            Type t = Type.GetTypeFromProgID("QBXMLRP2.RequestProcessor");
             if (t == null)
             {
+                Log.Information("CreateRequestProcessor: not found, trying QBXMLRP2.RequestProcessor.1");
+                t = Type.GetTypeFromProgID("QBXMLRP2.RequestProcessor.1");
+            }
+            if (t == null)
+            {
+                Log.Information("CreateRequestProcessor: QBXMLRP2 not registered in this machine's COM catalog");
                 throw new System.Runtime.InteropServices.COMException(
                     "QuickBooks request processor (QBXMLRP2) is not registered. Install QuickBooks Desktop on this machine.");
             }
-            return Activator.CreateInstance(t);
+            Log.Information("CreateRequestProcessor: resolved " + t.FullName);
+            dynamic rp = Activator.CreateInstance(t);
+            Log.Information("CreateRequestProcessor: activation OK (" + rp.GetType().FullName + ")");
+            return rp;
         }
 
 
@@ -72,6 +107,10 @@ namespace apic
             Ipaddress = Config["ipaddress"] == "" ? Get_IP4() : "127.0.0.1";
             Url = "http://" + Ipaddress + ":" + Config["port"] + "/";
             Rp = null;
+
+            Log.Information("Config: port=" + Config["port"] + " ipaddress=" + Config["ipaddress"] + " host=" + Config["host"] + " auto_ipaddress=" + Config["auto_ipaddress"]);
+            Log.Information("Resolved: Ipaddress=" + Ipaddress + " Host=" + Host + " Url=" + Url);
+            Log.Information("Quickbooks file (raw): " + Config["quickbooks_file"]);
 
 
         }
@@ -265,6 +304,21 @@ namespace apic
 
         public List<string> Send_xmls(List<string> xmls)
         {
+            List<string> responses = new List<string>();
+            try
+            {
+                return RunOnSta(() => Send_xmls_impl(xmls));
+            }
+            catch (Exception ex)
+            {
+                Log.Information("Error: " + ex.ToString());
+                responses.Add("COM Error Description = " + ex.Message + "COM error");
+                return responses;
+            }
+        }
+
+        public List<string> Send_xmls_impl(List<string> xmls)
+        {
             string qbfile = Config["quickbooks_file"].ToString();
             string session = null;
             string response = null;
@@ -289,10 +343,11 @@ namespace apic
 
                 System.Threading.Thread.Sleep(2000);
             }
-            catch (System.Runtime.InteropServices.COMException ex)
+            catch (Exception ex)
             {
                 string error = "COM Error Description = " + ex.Message + "COM error";
                 Console.WriteLine(error);
+                Log.Information(ex.ToString());
                 responses.Add(error);
 
             }
@@ -319,6 +374,19 @@ namespace apic
 
         public string Send_xml(String xml_str)
         {
+            try
+            {
+                return RunOnSta(() => Send_xml_impl(xml_str));
+            }
+            catch (Exception ex)
+            {
+                Log.Information(ex.ToString());
+                return "COM Error Description = " + ex.Message + "COM error";
+            }
+        }
+
+        public string Send_xml_impl(String xml_str)
+        {
             string qbfile = Config["quickbooks_file"].ToString();
             string ticket = null;
             string response = null;
@@ -332,8 +400,9 @@ namespace apic
                 response = Rp.ProcessRequest(ticket, xml_str);
                 System.Threading.Thread.Sleep(2000);
             }
-            catch (System.Runtime.InteropServices.COMException ex)
+            catch (Exception ex)
             {
+                Log.Information(ex.ToString());
                 return "COM Error Description = " + ex.Message + "COM error";
 
             }
@@ -418,6 +487,11 @@ namespace apic
 
         public Boolean Test_qb_access()
         {
+            return RunOnSta(Test_qb_access_impl);
+        }
+
+        public Boolean Test_qb_access_impl()
+        {
             bool r = false;
             string qbfile = Config["quickbooks_file"].ToString();
             Log.Information("Check if file exists: ");
@@ -442,7 +516,7 @@ namespace apic
                         ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
                         r = true;
                     }
-                    catch (System.Runtime.InteropServices.COMException ex)
+                    catch (Exception ex)
                     {
                         Log.Information("Error");
                         Log.Information(ex.ToString());

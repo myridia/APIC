@@ -18,8 +18,11 @@ by late binding.
 ## Build
 
 ```bash
-dotnet publish apic/apic.csproj -c Release -r win-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
+./ask.sh    # task 1 — publish and copy apic.exe to the repo root
+./build.sh  # same, without the menu
 ```
+
+Produces a single-file `apic.exe` at the repository root (gitignored).
 
 ## HOW to sign the apic with powershell 
 

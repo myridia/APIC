@@ -42,14 +42,20 @@ Set `quickbooks_file` to the full path of your `.qbw` before first sign-in.
 ## Build (Windows)
 
 ```bash
-dotnet publish apic/apic.csproj -c Release -r win-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
+./ask.sh   # task 1 — publish and copy apic.exe to the repo root
+./build.sh # same, without the menu
 ```
+
+`dotnet publish` alone already produces a single-file `apic.exe`
+(`apic/bin/Release/net10.0-windows/win-x64/publish/apic.exe`); both wrappers also copy
+it to the repository root as `./apic.exe` (gitignored).
 
 ## Structure
 - `apic/apic.csproj` — project file (no Intuit references)
 - `apic/Program.cs` — entry point and gateway logic; COM access via
-  `CreateRequestProcessor()` (late binding); `QbFileOpenMultiUser = 2`
-- `ask.sh` + `ask.d/` — task menu (1 Build, 2 Run, 3 Restore, 4 List packages)
+  `CreateRequestProcessor()` (late binding), marshalled onto a dedicated STA
+  thread per call (`RunOnSta`); `QbFileOpenMultiUser = 2`
+- `ask.sh` + `ask.d/` — task menu (1 Build, 2 Run, 3 Restore, 4 List packages, 5 Clean)
 - `build.sh` — win-x64 publish one-liner
 - `.github/workflows/windows.yml` — CI build + release on push to `main`
   (unsigned; see README)
