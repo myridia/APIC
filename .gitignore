@@ -61,3 +61,4 @@ x64/
 .env.*
 logs/
 apic.exe
+apic_config.toml

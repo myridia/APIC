@@ -4,6 +4,7 @@ using Tommy;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
@@ -108,29 +109,41 @@ namespace apic
         private const int GateTimeoutMs = 600000;
         private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
-        private static T RunOnSta<T>(Func<T> work)
+        private sealed class StaWorkItem
         {
-            T result = default;
-            Exception error = null;
-            Thread t = new Thread(() =>
+            public Func<object> Work;
+            public TaskCompletionSource<object> Tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+            public void Run()
             {
-                Log.Information("RunOnSta: worker thread started (STA)");
-                try
+                try { Tcs.SetResult(Work()); } catch (Exception e) { Tcs.SetException(e); }
+            }
+        }
+
+        private static readonly BlockingCollection<StaWorkItem> StaQueue = new BlockingCollection<StaWorkItem>();
+
+        static ApicClass()
+        {
+            Thread sta = new Thread(() =>
+            {
+                foreach (var item in StaQueue.GetConsumingEnumerable())
                 {
-                    result = work();
-                    Log.Information("RunOnSta: worker thread finished");
-                }
-                catch (Exception e)
-                {
-                    error = e;
-                    Log.Information("RunOnSta: worker thread threw " + e.ToString());
+                    try { item.Run(); } catch { }
                 }
             });
-            t.SetApartmentState(ApartmentState.STA);
-            t.Start();
-            t.Join();
-            if (error != null) throw error;
-            return result;
+            sta.IsBackground = true;
+            sta.Name = "QbSta";
+            sta.SetApartmentState(ApartmentState.STA);
+            sta.Start();
+        }
+
+        private static T RunOnSta<T>(Func<T> work)
+        {
+            var item = new StaWorkItem
+            {
+                Work = () => work()
+            };
+            StaQueue.Add(item);
+            return (T)item.Tcs.Task.GetAwaiter().GetResult();
         }
 
         private static dynamic CreateRequestProcessor()
@@ -707,11 +720,26 @@ namespace apic
         public TomlTable Get_config()
         {
 
-            string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDoc‌​uments), "", "apic_config.toml");
+            string path = System.IO.Path.Combine(AppContext.BaseDirectory, "apic_config.toml");
+            string[] argv = Environment.GetCommandLineArgs();
+            for (int i = 0; i < argv.Length - 1; i++)
+            {
+                if (argv[i] == "--config") { path = argv[i + 1]; break; }
+            }
+            string envPath = Environment.GetEnvironmentVariable("APIC_CONFIG");
+            if (!string.IsNullOrEmpty(envPath)) { path = envPath; }
             Config_file = path;
             Console.WriteLine("...config path: " + path);
             if (!File.Exists(path))
             {
+                string legacy = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "apic_config.toml");
+                if (File.Exists(legacy))
+                {
+                    Console.WriteLine("...migrating config from " + legacy);
+                    File.Copy(legacy, path);
+                }
+                else
+                {
                 Console.WriteLine("...config missing, creating default at " + path);
                 Console.WriteLine("file does not exists");
                 Log.Information("configuration.toml does not exists, create a new one");
@@ -733,7 +761,7 @@ namespace apic
                     toml.WriteTo(writer);
                     writer.Flush();
                 }
-
+                }
             }
 
             else

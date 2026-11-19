@@ -24,8 +24,15 @@ company file). Not QuickBooks Online, not the Web Connector.
   data file automatically")
 
 ## Configuration
-First run creates `apic_config.toml` in the user's My Documents
-(`%USERPROFILE%\Documents\apic_config.toml`). Fill in:
+Config lives as `apic_config.toml` **next to the exe** (`AppContext.BaseDirectory`),
+self-contained with the binary and `logs/`. On first run, if the exe-folder config is
+missing but a legacy `%USERPROFILE%\Documents\apic_config.toml` exists, it is copied
+over automatically; otherwise a default is created. Override the location with:
+
+- `--config <path>` argument, or
+- `APIC_CONFIG=<path>` environment variable.
+
+Fill in:
 
 ```toml
 title = "APIc"
@@ -37,7 +44,9 @@ logfile = "logs/apic_server.txt"
 host = ""
 ```
 
-Set `quickbooks_file` to the full path of your `.qbw` before first sign-in.
+Set `quickbooks_file` to the full path of your `.qbw` before first sign-in — for a
+Windows service, point it at a UNC path (`\\\\server\\share\\...`), mapped drive
+letters don't exist for services.
 
 ## Build (Windows)
 
