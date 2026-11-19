@@ -46,9 +46,11 @@ Set `quickbooks_file` to the full path of your `.qbw` before first sign-in.
 ./build.sh # same, without the menu
 ```
 
-`dotnet publish` alone already produces a single-file `apic.exe`
+`dotnet publish` produces a single-file `apic.exe`
 (`apic/bin/Release/net10.0-windows/win-x64/publish/apic.exe`); both wrappers also copy
 it to the repository root as `./apic.exe` (gitignored).
+`PublishTrimmed` is deliberately off — trimmed builds disable .NET's built-in COM
+interop and break the QuickBooks COM calls.
 
 ## Structure
 - `apic/apic.csproj` — project file (no Intuit references)

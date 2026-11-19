@@ -21,11 +21,18 @@ namespace apic
 
         public static void Main()
         {
-            Console.WriteLine("Apic Gateway");
-            ApicClass a = new ApicClass();
-            a.Gateway();
-
-
+            try
+            {
+                Console.WriteLine("Apic Gateway");
+                ApicClass a = new ApicClass();
+                a.Gateway();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Fatal error: " + e);
+                Console.WriteLine("Press Enter to exit...");
+                Console.ReadLine();
+            }
         }
     }
 
@@ -233,6 +240,8 @@ namespace apic
 
         async Task Default_route(HttpContext ctx)
         {
+            try
+            {
             Request_counter += 1;
 
             string data = Set_json_msg();
@@ -297,6 +306,14 @@ namespace apic
             }
             Log.Information("Deliverd JSON Data \t" + Request_counter + " (" + (data == null ? 0 : data.Length) + " chars)");
             await ctx.Response.Send(data);
+            }
+            catch (Exception ex)
+            {
+                Log.Information("Default_route failed: " + ex.ToString());
+                ctx.Response.StatusCode = 200;
+                ctx.Response.Headers["Content-Type"] = "application/json";
+                await ctx.Response.Send(Set_json_msg("Error: " + ex.Message));
+            }
         }
 
         public static bool Validate_xml(string xml)
@@ -308,7 +325,7 @@ namespace apic
                 doc.LoadXml(xml);
                 r = true;
             }
-            catch (XmlException e)
+            catch (Exception e)
             {
                 Log.Information($"Error: {e}");
                 Log.Information(xml);
@@ -486,6 +503,11 @@ namespace apic
 
         public string ParseRespond(String response)
         {
+            if (response == null)
+            {
+                Log.Information("ParseRespond: QuickBooks returned null response");
+                return Set_json_msg("No response from QuickBooks");
+            }
             bool valid_xml = Validate_xml(response);
             Log.Information("ParseRespond: valid XML: " + valid_xml + " (" + (response == null ? 0 : response.Length) + " chars)");
 
