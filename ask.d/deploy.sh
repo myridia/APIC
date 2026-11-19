@@ -18,8 +18,8 @@ command -v iconv >/dev/null 2>&1 || {
 
 apic_load_conn "$ENV_FILE"
 
-PFX=${SIGN_PFX:-"C:\Users\$APIC_USER\MySPC.pfx"}
-EXE="C:\Users\$APIC_USER\Desktop\apic.exe"
+PFX=${SIGN_PFX:-"C:\\Users\\$APIC_USER\\MySPC.pfx"}
+EXE="C:\\Users\\$APIC_USER\\Desktop\\apic.exe"
 TARGET="$APIC_USER@$APIC_HOST:~/Desktop/"
 
 printf "...Uploading apic.exe to %s\n" "$TARGET"
