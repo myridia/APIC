@@ -54,3 +54,9 @@ x64/
 
 
 
+
+*.pfx
+*.pvk
+.env
+.env.*
+logs/

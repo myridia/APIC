@@ -1,6 +1,5 @@
 ﻿using System;
 
-using System.ServiceProcess;
 using System.IO;
 using Tommy;
 using System.Collections.Generic;
@@ -9,8 +8,6 @@ using System.Xml;
 using System.Net;
 using Newtonsoft.Json;
 using WatsonWebserver;
-using System.ComponentModel;
-using Interop.QBXMLRP2Lib;
 using Serilog;
 
 
@@ -37,15 +34,28 @@ namespace apic
     class ApicClass
     {
 
-        [DefaultValue("")]
         public int Request_counter { get; set; }
         public string Ipaddress { get; set; }
         public string Url { get; set; }
         public string Host { get; set; }
         public string Config_file { get; set; }
         public string Quickbooks_file { get; set; }
-        public RequestProcessor2 Rp { get; set; }
+        public dynamic Rp { get; set; }
         public TomlTable Config { get; set; }
+
+        private const int QbFileOpenMultiUser = 2;
+
+        private static dynamic CreateRequestProcessor()
+        {
+            Type t = Type.GetTypeFromProgID("QBXMLRP2.RequestProcessor")
+                  ?? Type.GetTypeFromProgID("QBXMLRP2.RequestProcessor.1");
+            if (t == null)
+            {
+                throw new System.Runtime.InteropServices.COMException(
+                    "QuickBooks request processor (QBXMLRP2) is not registered. Install QuickBooks Desktop on this machine.");
+            }
+            return Activator.CreateInstance(t);
+        }
 
 
         public ApicClass()
@@ -263,9 +273,9 @@ namespace apic
 
             try
             {
-                Rp = new RequestProcessor2();
+                Rp = CreateRequestProcessor();
                 Rp.OpenConnection("APIc", "APIc");
-                session = Rp.BeginSession(qbfile, QBFileMode.qbFileOpenMultiUser);
+                session = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
 
                 int c = xmls.Count;
                 foreach (var i in xmls)
@@ -316,9 +326,9 @@ namespace apic
             List<string> responses = new List<string>();
             try
             {
-                Rp = new RequestProcessor2();
+                Rp = CreateRequestProcessor();
                 Rp.OpenConnection("APIc", "APIc");
-                ticket = Rp.BeginSession(qbfile, QBFileMode.qbFileOpenMultiUser);
+                ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
                 response = Rp.ProcessRequest(ticket, xml_str);
                 System.Threading.Thread.Sleep(2000);
             }
@@ -409,7 +419,6 @@ namespace apic
         public Boolean Test_qb_access()
         {
             bool r = false;
-            //string qbfile = @"Q:\New QB File\shining light body jewelry - working.qbw";
             string qbfile = Config["quickbooks_file"].ToString();
             Log.Information("Check if file exists: ");
             Log.Information(qbfile);
@@ -426,11 +435,11 @@ namespace apic
                     try
                     {
                         Log.Information("...requestl");
-                        Rp = new RequestProcessor2();
+                        Rp = CreateRequestProcessor();
                         Rp.OpenConnection("APIc", "APIc");
                         Log.Information("Access your company file - Testing!");
                         Log.Information(qbfile);
-                        ticket = Rp.BeginSession(qbfile, QBFileMode.qbFileOpenMultiUser);
+                        ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
                         r = true;
                     }
                     catch (System.Runtime.InteropServices.COMException ex)
@@ -513,7 +522,7 @@ namespace apic
                 {
                     ["title"] = "APIc",
 
-                    ["quickbooks_file"] = "Q:\\New QB File\\shining light body jewelry - working.qbw",
+                    ["quickbooks_file"] = "",
                     ["port"] = 8000,
                     ["ipaddress"] = "",
                     ["auto_ipaddress"] = true,
@@ -538,11 +547,6 @@ namespace apic
         }
 
 
-    }
-
-    internal class HttpContextBase
-    {
-        public object Response { get; internal set; }
     }
 }
 
