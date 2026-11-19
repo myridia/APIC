@@ -24,6 +24,13 @@ by late binding.
 
 Produces a single-file `apic.exe` at the repository root (gitignored).
 
+## Deploy
+
+`./ask.sh` → task 6. On first run it asks for the host/IP, SSH user and
+password, saves them to `.env` (gitignored, never committed), then uploads
+`apic.exe` to the host's Desktop and signs it there with `MySPC.pfx`.
+The repo contains no host names or credentials.
+
 ## HOW to sign the apic with powershell 
 
 QuickBooks binds its automatic-login grant to the **signed identity** of the

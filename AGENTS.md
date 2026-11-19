@@ -57,12 +57,22 @@ interop and break the QuickBooks COM calls.
 - `apic/Program.cs` — entry point and gateway logic; COM access via
   `CreateRequestProcessor()` (late binding), marshalled onto a dedicated STA
   thread per call (`RunOnSta`); `QbFileOpenMultiUser = 2`
-- `ask.sh` + `ask.d/` — task menu (1 Build, 2 Run, 3 Restore, 4 List packages, 5 Clean)
+- `ask.sh` + `ask.d/` — task menu (1 Build, 2 Run, 3 Restore, 4 List packages,
+  5 Clean, 6 Deploy). Deploy uploads `apic.exe` to the host and signs it; the
+  first run prompts for host/user/password and saves them to `.env`
+- `ask.d/lib.sh` / `ask.d/askpass` — deploy helpers: shared SSH transport
+  (sshpass if present, else `SSH_ASKPASS_REQUIRE=force`), interactive `.env`
+  setup
+- `ask.d/sign.ps1` — remote signtool step (Windows host), queries Windows SDK
+  paths itself
 - `build.sh` — win-x64 publish one-liner
 - `.github/workflows/windows.yml` — CI build + release on push to `main`
   (unsigned; see README)
 
 ## Conventions
+- `.env` is gitignored and holds the deploy target (`APIC_HOST`, `APIC_USER`,
+  `SSHPASS`); it is created interactively by the deploy task. Never commit it,
+  and never put hostnames or credentials in the repo files.
 - No comments in code unless asked.
 - Builds, verification and `dotnet` invocations are run by the user on the
   target machine — agents only edit files, they never build or run.
