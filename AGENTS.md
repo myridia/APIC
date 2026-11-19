@@ -42,6 +42,7 @@ ipaddress = ""
 auto_ipaddress = true
 logfile = "logs/apic_server.txt"
 host = ""
+token = "<generated at first run>"
 ```
 
 Set `quickbooks_file` to the full path of your `.qbw` before first sign-in — for a
@@ -94,6 +95,9 @@ interop and break the QuickBooks COM calls.
   path, only the lifetime differs.
 - Logs are written both to console and to `logs/apic_server.txt` (day-rolled,
   next to the exe).
+- The token does **not** rotate on recompile/redeploy — it lives in the
+  persisted `apic_config.toml` (or `APIC_TOKEN`); only deleting/clearing the
+  config generates a new one, printed once to the console.
 - No comments in code unless asked.
 - Builds, verification and `dotnet` invocations are run by the user on the
   target machine — agents only edit files, they never build or run.

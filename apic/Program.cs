@@ -109,6 +109,58 @@ namespace apic
         private const int GateTimeoutMs = 600000;
         private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
+        internal static TomlTable StaticConfig;
+
+        private static string Read_token_from_config()
+        {
+            try
+            {
+                if (StaticConfig == null) { return string.Empty; }
+                return StaticConfig["token"]?.ToString() ?? string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static string Generate_token()
+        {
+            byte[] bytes = new byte[32];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+            return Convert.ToHexString(bytes).ToLowerInvariant();
+        }
+
+        private static bool Is_authorized(HttpContext ctx)
+        {
+            string token = Environment.GetEnvironmentVariable("APIC_TOKEN");
+            if (string.IsNullOrEmpty(token))
+            {
+                token = Read_token_from_config();
+            }
+            if (string.IsNullOrEmpty(token))
+            {
+                return true;
+            }
+            try
+            {
+                string header = ctx.Request.Headers["X-APIc-Token"];
+                return !string.IsNullOrEmpty(header) && header == token;
+            }
+            catch (Exception ex)
+            {
+                Log.Information("Is_authorized: header read failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static async Task Send_unauthorized(HttpContext ctx)
+        {
+            ctx.Response.StatusCode = 401;
+            ctx.Response.Headers["Content-Type"] = "application/json";
+            await ctx.Response.Send("{\"error\":\"unauthorized\"}");
+        }
+
         private sealed class StaWorkItem
         {
             public Func<object> Work;
@@ -213,6 +265,7 @@ namespace apic
         public ApicClass()
         {
             Config = Get_config();
+            StaticConfig = Config;
             string logFile = Path.Combine(AppContext.BaseDirectory, "logs", "apic_server.txt");
             Directory.CreateDirectory(Path.GetDirectoryName(logFile));
             Log.Logger = new LoggerConfiguration()
@@ -278,6 +331,11 @@ namespace apic
 
         async Task Post(HttpContext ctx)
         {
+            if (!Is_authorized(ctx))
+            {
+                await Send_unauthorized(ctx);
+                return;
+            }
 
             ctx.Response.Headers["Content-Type"] = "application/json";
             Log.Information("Visitor: " + ctx.Request.Useragent);
@@ -352,6 +410,12 @@ namespace apic
 
         async Task Test_route(HttpContext ctx)
         {
+            if (!Is_authorized(ctx))
+            {
+                await Send_unauthorized(ctx);
+                return;
+            }
+
             IDictionary<string, string> data = new Dictionary<string, string>();
 
             ctx.Response.StatusCode = 200;
@@ -388,6 +452,12 @@ namespace apic
         {
             try
             {
+            if (!Is_authorized(ctx))
+            {
+                await Send_unauthorized(ctx);
+                return;
+            }
+
             Request_counter += 1;
 
             string data = Set_json_msg();
@@ -720,8 +790,7 @@ namespace apic
         public TomlTable Get_config()
         {
 
-            string path = System.IO.Path.Combine(AppContext.BaseDirectory, "apic_config.toml");
-            string[] argv = Environment.GetCommandLineArgs();
+            string path = System.IO.Path.Combine(AppContext.BaseDirectory, "apic_config.toml");            string[] argv = Environment.GetCommandLineArgs();
             for (int i = 0; i < argv.Length - 1; i++)
             {
                 if (argv[i] == "--config") { path = argv[i + 1]; break; }
@@ -753,6 +822,7 @@ namespace apic
                     ["auto_ipaddress"] = true,
                     ["logfile"] = "logs/apic_server.txt",
                     ["host"] = "",
+                    ["token"] = Generate_token(),
 
 
                 };
@@ -761,6 +831,7 @@ namespace apic
                     toml.WriteTo(writer);
                     writer.Flush();
                 }
+                Console.WriteLine("...generated a random token (also in the config): " + toml["token"]);
                 }
             }
 

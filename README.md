@@ -51,6 +51,17 @@ Produces a single-file `apic.exe` at the repository root (gitignored).
 
 ## Deploy
 
+Set the `APIC_TOKEN` environment variable (user, machine, or service-owned — never in
+the repo) to require an `X-APIc-Token: <token>` header on all QuickBooks endpoints
+(`GET /`, `POST /`, `GET /test/`). Any request without a matching header gets a 401
+`{"error":"unauthorized"}`. If `APIC_TOKEN` is unset, the token from `apic_config.toml`
+(`token = "..."`) is used; if that too is empty, the gateway stays open. Env var wins
+over the toml value. Set it before exposing the port beyond a trusted network. The
+toml file itself is gitignored — keep it that way. On first run the exe now generates
+and prints a random 64-hex token and writes it into the default config — read it from
+the console, then set the same value in Sapir's `APIC_TOKEN` (env var wins over the
+toml value; set either to empty to run open).
+
 `./ask.sh` → task 6. On first run it asks for the host/IP, SSH user and
 password, saves them to `.env` (gitignored, never committed), then uploads
 `apic.exe` to the host's Desktop and signs it there with `MySPC.pfx`.
