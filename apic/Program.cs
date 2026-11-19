@@ -170,7 +170,6 @@ namespace apic
 
             string xml = ctx.Request.DataAsString;
             Log.Information("POST body length: " + (xml == null ? 0 : xml.Length) + " chars");
-            Log.Information("POST body: " + xml);
 
             // Console.WriteLine(xml);
 
@@ -282,7 +281,6 @@ namespace apic
             if (xml != "")
             {
                 Log.Information("Has a XML Parameter String, xml length: " + xml.Length);
-                Log.Information("XML payload: " + xml);
 
                 bool ok = Validate_xml(xml);
                 if (ok)
@@ -328,7 +326,7 @@ namespace apic
             catch (Exception e)
             {
                 Log.Information($"Error: {e}");
-                Log.Information(xml);
+                Log.Information(xml.Length > 300 ? xml.Substring(0, 300) + "..." : xml);
                 r = false;
             }
             return r;
@@ -373,10 +371,9 @@ namespace apic
                 foreach (var i in xmls)
                 {
                     Log.Information("process no:" + c + ", payload length: " + (i == null ? 0 : i.Length));
-                    Log.Information("ProcessRequest payload: " + i);
 
                     response = Rp.ProcessRequest(session, i);
-                    Log.Information("ProcessRequest response (" + (response == null ? 0 : response.Length) + " chars): " + response);
+                    Log.Information("ProcessRequest response: " + (response == null ? 0 : response.Length) + " chars");
                     responses.Add(response);
                     c--;
                 }
@@ -445,7 +442,6 @@ namespace apic
                 Log.Information("Send_xml_impl: calling ProcessRequest");
                 response = Rp.ProcessRequest(ticket, xml_str);
                 Log.Information("Send_xml_impl: ProcessRequest returned (" + (response == null ? 0 : response.Length) + " chars)");
-                Log.Information("ProcessRequest response: " + response);
                 System.Threading.Thread.Sleep(2000);
             }
             catch (Exception ex)
