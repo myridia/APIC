@@ -846,6 +846,34 @@ namespace apic
                 {
                     TomlTable config = TOML.Parse(reader);
                     Console.WriteLine("...config parsed OK, quickbooks_file=" + config["quickbooks_file"]);
+                    string tok = null;
+                    try { tok = config["token"]?.ToString(); } catch { }
+                    if (string.IsNullOrEmpty(tok))
+                    {
+                        tok = Generate_token();
+                        try
+                        {
+                            List<string> lines = new List<string>(File.ReadAllLines(path));
+                            bool found = false;
+                            for (int i = 0; i < lines.Count; i++)
+                            {
+                                if (lines[i].TrimStart().StartsWith("token"))
+                                {
+                                    lines[i] = "token = \"" + tok + "\"";
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) { lines.Add("token = \"" + tok + "\""); }
+                            File.WriteAllLines(path, lines);
+                            Console.WriteLine("...generated a random token (saved to config): " + tok);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("...could not save generated token to config: " + ex.Message);
+                        }
+                        config["token"] = tok;
+                    }
                     return config;
                 }
                 catch (Exception e)
