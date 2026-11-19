@@ -52,6 +52,8 @@ namespace apic
         public TomlTable Config { get; set; }
 
         private const int QbFileOpenMultiUser = 2;
+        private const int GateTimeoutMs = 600000;
+        private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
         private static T RunOnSta<T>(Func<T> work)
         {
@@ -204,11 +206,25 @@ namespace apic
 
             if (ok)
             {
-                Log.Information("Complete Batch XML is ok, sending " + xmls.Count + " request(s) to quickbooks");
-                List<string> rxml = Send_xmls(xmls);
-                Log.Information("POST: QuickBooks answered with " + rxml.Count + " response(s)");
-                data["responses"] = Parse_batch_respond(rxml);
-
+                if (!await Gate.WaitAsync(GateTimeoutMs))
+                {
+                    Log.Information("QuickBooks busy - gate timeout after 600s");
+                    data["error"] = "QuickBooks is busy - timeout after 600s";
+                }
+                else
+                {
+                    try
+                    {
+                        Log.Information("Complete Batch XML is ok, sending " + xmls.Count + " request(s) to quickbooks");
+                        List<string> rxml = Send_xmls(xmls);
+                        Log.Information("POST: QuickBooks answered with " + rxml.Count + " response(s)");
+                        data["responses"] = Parse_batch_respond(rxml);
+                    }
+                    finally
+                    {
+                        Gate.Release();
+                    }
+                }
             }
 
             ctx.Response.Headers["Content-Type"] = "application/json";
@@ -227,11 +243,27 @@ namespace apic
             ctx.Response.Headers["Content-Type"] = "application/json";
             Log.Information("Visitor: " + ctx.Request.Useragent);
             Log.Information("Request: /test/");
-            bool test = Test_qb_access();
-            Log.Information("Test result: " + test);
-
-            data["testing quickbooks file access"] = test.ToString();
-            data["quickbooks_file"] = Config["quickbooks_file"];
+            if (!await Gate.WaitAsync(GateTimeoutMs))
+            {
+                Log.Information("QuickBooks busy - gate timeout after 600s");
+                data["testing quickbooks file access"] = "False";
+                data["message"] = "QuickBooks is busy - timeout after 600s";
+                data["quickbooks_file"] = Config["quickbooks_file"];
+            }
+            else
+            {
+                try
+                {
+                    bool test = Test_qb_access();
+                    Log.Information("Test result: " + test);
+                    data["testing quickbooks file access"] = test.ToString();
+                    data["quickbooks_file"] = Config["quickbooks_file"];
+                }
+                finally
+                {
+                    Gate.Release();
+                }
+            }
             string json = JsonConvert.SerializeObject(data);
 
             await ctx.Response.Send(json);
@@ -287,15 +319,24 @@ namespace apic
                 {
                     Log.Information("XML is ok and sending it to Quickbooks");
 
-                    while (Rp != null)
+                    if (!await Gate.WaitAsync(GateTimeoutMs))
                     {
-                        Log.Information("Quickbooks file is busy, please wait\t" + Request_counter);
-                        await Task.Delay(2000);
+                        Log.Information("QuickBooks busy - gate timeout after 600s");
+                        data = Set_json_msg("QuickBooks is busy - timeout after 600s");
                     }
-
-                    string rxml = Send_xml(xml);
-                    Log.Information("Quickbooks responded, sending response to parase it\t" + Request_counter);
-                    data = ParseRespond(rxml);
+                    else
+                    {
+                        try
+                        {
+                            string rxml = Send_xml(xml);
+                            Log.Information("Quickbooks responded, sending response to parase it\t" + Request_counter);
+                            data = ParseRespond(rxml);
+                        }
+                        finally
+                        {
+                            Gate.Release();
+                        }
+                    }
                 }
                 else
                 {

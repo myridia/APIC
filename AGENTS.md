@@ -56,7 +56,10 @@ interop and break the QuickBooks COM calls.
 - `apic/apic.csproj` — project file (no Intuit references)
 - `apic/Program.cs` — entry point and gateway logic; COM access via
   `CreateRequestProcessor()` (late binding), marshalled onto a dedicated STA
-  thread per call (`RunOnSta`); `QbFileOpenMultiUser = 2`
+  thread per call (`RunOnSta`); `QbFileOpenMultiUser = 2`. All QuickBooks
+  calls (GET `/?xml|base64=`, POST `/`, `/test/`) are serialized through one
+  `SemaphoreSlim` gate (`Gate`, 600 s timeout) — requests wait for the gate,
+  requests that outlast it get a "QuickBooks is busy" JSON
 - `ask.sh` + `ask.d/` — task menu (1 Build, 2 Run, 3 Restore, 4 List packages,
   5 Clean, 6 Deploy). Deploy uploads `apic.exe` to the host and signs it; the
   first run prompts for host/user/password and saves them to `.env`
