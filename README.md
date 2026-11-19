@@ -15,6 +15,31 @@ by late binding.
 - A QuickBooks company file (`.qbw`) — set its full path in `apic_config.toml`
   (created in `%USERPROFILE%\Documents\` on first run)
 
+## Run it standalone (console)
+
+Double-click `apic.exe` — the console window stays open, shows the log, and
+opens a HTTP listener, exactly as during development. Stop with `Ctrl+C` or
+by closing the window.
+
+## Run it as a service (production)
+
+```cmd
+sc.exe create APIC binPath= "C:\path\to\apic.exe --service" start= auto obj= ".\pd_web0" password= "<the pd_web0 password>"
+sc.exe failure APIC reset= 86400 actions= restart/60000/restart/60000/restart/60000
+sc.exe start APIC
+```
+
+- `... --service` is required — without it the exe runs as a console app and
+  a service installation would fail its start dispatcher timeout.
+- Run it as the account that owns the QuickBooks file (`pd_web0`) — the grant
+  lives in the company file, but the account needs share access to UNC path.
+  Set `quickbooks_file` in `apic_config.toml` to the UNC path, e.g.
+  `\\DC01\Quickbooks$\New QB File\shining light body jewelry - working.qbw`.
+- Logs go to `logs\apic_server.txt` next to the exe (day-rolled).
+- `sc.exe stop APIC` stops the service, `sc.exe query APIC` shows state.
+- In service mode there is no console window; in console mode everything is
+  identical to before.
+
 ## Build
 
 ```bash

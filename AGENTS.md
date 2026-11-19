@@ -76,6 +76,11 @@ interop and break the QuickBooks COM calls.
 - `.env` is gitignored and holds the deploy target (`APIC_HOST`, `APIC_USER`,
   `SSHPASS`); it is created interactively by the deploy task. Never commit it,
   and never put hostnames or credentials in the repo files.
+- Dual mode: `apic.exe` runs as console (development), `apic.exe --service`
+  runs as the Windows service `APIC` (production) — same binary, same code
+  path, only the lifetime differs.
+- Logs are written both to console and to `logs/apic_server.txt` (day-rolled,
+  next to the exe).
 - No comments in code unless asked.
 - Builds, verification and `dotnet` invocations are run by the user on the
   target machine — agents only edit files, they never build or run.

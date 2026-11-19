@@ -1,7 +1,8 @@
-﻿using System;
-
+using System;
 using System.IO;
 using Tommy;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,10 +20,33 @@ namespace apic
     internal static class Program
     {
 
-        public static void Main()
+        public static async Task Main(string[] args)
         {
             try
             {
+                bool service = false;
+                foreach (var arg in args)
+                {
+                    if (arg == "--service" || arg == "-s")
+                    {
+                        service = true;
+                    }
+                }
+
+                if (service)
+                {
+                    await Host.CreateDefaultBuilder(args)
+                        .UseWindowsService(o => o.ServiceName = "APIC")
+                        .ConfigureServices(s =>
+                        {
+                            s.AddSingleton<ApicClass>();
+                            s.AddHostedService<ApicService>();
+                        })
+                        .Build()
+                        .RunAsync();
+                    return;
+                }
+
                 Console.WriteLine("Apic Gateway");
                 ApicClass a = new ApicClass();
                 a.Gateway();
@@ -37,7 +61,28 @@ namespace apic
     }
 
 
+    class ApicService : BackgroundService
+    {
+        private readonly ApicClass _server;
 
+        public ApicService(ApicClass server)
+        {
+            _server = server;
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            await Task.Run(() => _server.Gateway(), stoppingToken);
+
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            }
+            catch (TaskCanceledException)
+            {
+            }
+        }
+    }
 
     class ApicClass
     {
@@ -105,12 +150,15 @@ namespace apic
         public ApicClass()
         {
             Config = Get_config();
+            string logFile = Path.Combine(AppContext.BaseDirectory, "logs", "apic_server.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(logFile));
             Log.Logger = new LoggerConfiguration()
                               .MinimumLevel.Debug()
                             .WriteTo.Console(
 
                     outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
                 )
+                            .WriteTo.File(logFile, rollingInterval: RollingInterval.Day)
                               .CreateLogger();
             Host = Config["host"] == "" ? Dns.GetHostName() : "127.0.0.1";
             Ipaddress = Config["ipaddress"] == "" ? Get_IP4() : "127.0.0.1";
@@ -149,7 +197,10 @@ namespace apic
 
             server.Start();
             Log.Information("Server started on " + Ipaddress + ":" + Config["port"]);
-            Console.ReadLine();
+            if (Environment.UserInteractive)
+            {
+                Console.ReadLine();
+            }
 
 
 
@@ -185,18 +236,15 @@ namespace apic
 
             foreach (var i in xmls)
             {
-                // Console.WriteLine("xxxxxxx");
-                // Console.WriteLine(i);
-                // Console.WriteLine("xxxxxxx");
                 bool x = Validate_xml(i);
-                Log.Information("Chunk #" + xmls.IndexOf(i) + " valid: " + x + " (" + (i == null ? 0 : i.Length) + " chars)");
-
                 if (x == false)
                 {
+                    Log.Information("Chunk #" + xmls.IndexOf(i) + " INVALID (" + (i == null ? 0 : i.Length) + " chars)");
+                    Log.Information("Chunk content: " + (i != null && i.Length > 300 ? i.Substring(0, 300) + "..." : i));
                     ok = false;
                 }
-
             }
+            Log.Information("POST validation: " + (ok ? "all " + xmls.Count + " chunk(s) valid" : "validation FAILED"));
 
             if (!ok)
             {
@@ -409,14 +457,18 @@ namespace apic
                 Log.Information("Send_xmls_impl: BeginSession OK, ticket: " + session);
 
                 int c = xmls.Count;
+                int done = 0;
                 foreach (var i in xmls)
                 {
-                    Log.Information("process no:" + c + ", payload length: " + (i == null ? 0 : i.Length));
+                    if (done == 0 || (done + 1) % 50 == 0 || c == 1)
+                    {
+                        Log.Information("process " + (done + 1) + " of " + xmls.Count + " (payload " + (i == null ? 0 : i.Length) + " chars)");
+                    }
 
                     response = Rp.ProcessRequest(session, i);
-                    Log.Information("ProcessRequest response: " + (response == null ? 0 : response.Length) + " chars");
                     responses.Add(response);
                     c--;
+                    done++;
                 }
 
                 System.Threading.Thread.Sleep(2000);
