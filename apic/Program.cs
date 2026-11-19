@@ -136,8 +136,10 @@ namespace apic
             Server server = new Server(Ipaddress, Config["port"], false, Default_route);
             server.Routes.Static.Add(WatsonWebserver.HttpMethod.GET, "/test/", Test_route);
             server.Routes.Static.Add(WatsonWebserver.HttpMethod.POST, "/", Post);
+            Log.Information("Routes registered: GET /test/, POST /, GET /* (default)");
 
             server.Start();
+            Log.Information("Server started on " + Ipaddress + ":" + Config["port"]);
             Console.ReadLine();
 
 
@@ -157,9 +159,11 @@ namespace apic
             bool ok = true;
             IDictionary<string, string> data = new Dictionary<string, string>();
             Log.Information("POST Request");
-            Log.Information(ctx.Request.ContentType);
+            Log.Information("POST ContentType: " + ctx.Request.ContentType);
 
             string xml = ctx.Request.DataAsString;
+            Log.Information("POST body length: " + (xml == null ? 0 : xml.Length) + " chars");
+            Log.Information("POST body: " + xml);
 
             // Console.WriteLine(xml);
 
@@ -168,6 +172,7 @@ namespace apic
 
 
             List<string> xmls = new List<string>(a);
+            Log.Information("POST split into " + xmls.Count + " chunk(s)");
 
 
             foreach (var i in xmls)
@@ -176,6 +181,7 @@ namespace apic
                 // Console.WriteLine(i);
                 // Console.WriteLine("xxxxxxx");
                 bool x = Validate_xml(i);
+                Log.Information("Chunk #" + xmls.IndexOf(i) + " valid: " + x + " (" + (i == null ? 0 : i.Length) + " chars)");
 
                 if (x == false)
                 {
@@ -184,11 +190,17 @@ namespace apic
 
             }
 
+            if (!ok)
+            {
+                Log.Information("POST batch rejected - one or more chunks failed validation, QuickBooks NOT called");
+            }
+
 
             if (ok)
             {
-                Log.Information("Complete Batch XML is ok, sending them to quickbooks");
+                Log.Information("Complete Batch XML is ok, sending " + xmls.Count + " request(s) to quickbooks");
                 List<string> rxml = Send_xmls(xmls);
+                Log.Information("POST: QuickBooks answered with " + rxml.Count + " response(s)");
                 data["responses"] = Parse_batch_respond(rxml);
 
             }
@@ -196,6 +208,7 @@ namespace apic
             ctx.Response.Headers["Content-Type"] = "application/json";
 
             string json = JsonConvert.SerializeObject(data);
+            Log.Information("POST response: " + json.Length + " chars");
 
             await ctx.Response.Send(json);
         }
@@ -209,6 +222,7 @@ namespace apic
             Log.Information("Visitor: " + ctx.Request.Useragent);
             Log.Information("Request: /test/");
             bool test = Test_qb_access();
+            Log.Information("Test result: " + test);
 
             data["testing quickbooks file access"] = test.ToString();
             data["quickbooks_file"] = Config["quickbooks_file"];
@@ -228,6 +242,7 @@ namespace apic
             Log.Information("Visitor: " + ctx.Request.Useragent);
             string xml = "";
             var keys = ctx.Request.Query.Elements.Keys;
+            Log.Information("Query keys: " + string.Join(", ", keys));
             foreach (var i in keys)
             {
                 //Console.WriteLine(i);
@@ -242,7 +257,7 @@ namespace apic
 
                 else if ((string)i == "base64")
                 {
-                    Console.WriteLine("...has base64");
+                    Log.Information("Query contains base64 payload, decoding");
                     string base64 = ctx.Request.Query.Elements["base64"];
                     base64 = WebUtility.UrlDecode(base64);
 
@@ -257,7 +272,8 @@ namespace apic
 
             if (xml != "")
             {
-                Log.Information("Has a XML Parameter String...");
+                Log.Information("Has a XML Parameter String, xml length: " + xml.Length);
+                Log.Information("XML payload: " + xml);
 
                 bool ok = Validate_xml(xml);
                 if (ok)
@@ -279,7 +295,7 @@ namespace apic
                     data = Set_json_msg("XML is not correctly formatted");
                 }
             }
-            Log.Information("Deliverd JSON Data \t" + Request_counter);
+            Log.Information("Deliverd JSON Data \t" + Request_counter + " (" + (data == null ? 0 : data.Length) + " chars)");
             await ctx.Response.Send(data);
         }
 
@@ -325,18 +341,25 @@ namespace apic
 
             List<string> responses = new List<string>();
 
+            Log.Information("Send_xmls_impl: entering, " + xmls.Count + " request(s), company file: " + qbfile);
             try
             {
                 Rp = CreateRequestProcessor();
+                Log.Information("Send_xmls_impl: calling OpenConnection(\"APIc\", \"APIc\")");
                 Rp.OpenConnection("APIc", "APIc");
+                Log.Information("Send_xmls_impl: OpenConnection returned");
+                Log.Information("Send_xmls_impl: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
                 session = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
+                Log.Information("Send_xmls_impl: BeginSession OK, ticket: " + session);
 
                 int c = xmls.Count;
                 foreach (var i in xmls)
                 {
-                    Log.Information("process no:" + c);
+                    Log.Information("process no:" + c + ", payload length: " + (i == null ? 0 : i.Length));
+                    Log.Information("ProcessRequest payload: " + i);
 
                     response = Rp.ProcessRequest(session, i);
+                    Log.Information("ProcessRequest response (" + (response == null ? 0 : response.Length) + " chars): " + response);
                     responses.Add(response);
                     c--;
                 }
@@ -347,7 +370,7 @@ namespace apic
             {
                 string error = "COM Error Description = " + ex.Message + "COM error";
                 Console.WriteLine(error);
-                Log.Information(ex.ToString());
+                Log.Information("Send_xmls_impl failed: " + ex.ToString());
                 responses.Add(error);
 
             }
@@ -392,17 +415,25 @@ namespace apic
             string response = null;
 
             List<string> responses = new List<string>();
+            Log.Information("Send_xml_impl: entering, payload length: " + (xml_str == null ? 0 : xml_str.Length) + ", company file: " + qbfile);
             try
             {
                 Rp = CreateRequestProcessor();
+                Log.Information("Send_xml_impl: calling OpenConnection(\"APIc\", \"APIc\")");
                 Rp.OpenConnection("APIc", "APIc");
+                Log.Information("Send_xml_impl: OpenConnection returned");
+                Log.Information("Send_xml_impl: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
                 ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
+                Log.Information("Send_xml_impl: BeginSession OK, ticket: " + ticket);
+                Log.Information("Send_xml_impl: calling ProcessRequest");
                 response = Rp.ProcessRequest(ticket, xml_str);
+                Log.Information("Send_xml_impl: ProcessRequest returned (" + (response == null ? 0 : response.Length) + " chars)");
+                Log.Information("ProcessRequest response: " + response);
                 System.Threading.Thread.Sleep(2000);
             }
             catch (Exception ex)
             {
-                Log.Information(ex.ToString());
+                Log.Information("Send_xml_impl failed: " + ex.ToString());
                 return "COM Error Description = " + ex.Message + "COM error";
 
             }
@@ -428,10 +459,12 @@ namespace apic
 
             List<string> data = new List<string>();
             String res = "".ToString();
+            Log.Information("Parse_batch_respond: parsing " + response.Count + " response(s)");
             foreach (var r in response)
             {
                 //Console.WriteLine(r);
                 bool is_ok = Validate_xml(r);
+                Log.Information("Parse_batch_respond: response valid XML: " + is_ok + " (" + (r == null ? 0 : r.Length) + " chars)");
                 if (is_ok)
                 {
                     XmlDocument doc = new XmlDocument();
@@ -454,6 +487,7 @@ namespace apic
         public string ParseRespond(String response)
         {
             bool valid_xml = Validate_xml(response);
+            Log.Information("ParseRespond: valid XML: " + valid_xml + " (" + (response == null ? 0 : response.Length) + " chars)");
 
             if (valid_xml)
             {
@@ -494,8 +528,13 @@ namespace apic
         {
             bool r = false;
             string qbfile = Config["quickbooks_file"].ToString();
+            Log.Information("Test_qb_access_impl: entering");
             Log.Information("Check if file exists: ");
             Log.Information(qbfile);
+            if (!File.Exists(@Config["quickbooks_file"]))
+            {
+                Log.Information("File NOT found: " + Config["quickbooks_file"]);
+            }
             if (File.Exists(@Config["quickbooks_file"]))
             {
                 Log.Information("File OK");
@@ -508,12 +547,17 @@ namespace apic
 
                     try
                     {
-                        Log.Information("...requestl");
+                        Log.Information("...request");
+                        Log.Information("Test_qb_access_impl: creating request processor");
                         Rp = CreateRequestProcessor();
+                        Log.Information("Test_qb_access_impl: calling OpenConnection");
                         Rp.OpenConnection("APIc", "APIc");
+                        Log.Information("Test_qb_access_impl: OpenConnection returned");
                         Log.Information("Access your company file - Testing!");
-                        Log.Information(qbfile);
+                        Log.Information("Test_qb_access_impl: calling BeginSession (mode " + QbFileOpenMultiUser + " = multi-user)");
                         ticket = Rp.BeginSession(qbfile, QbFileOpenMultiUser);
+                        Log.Information("Test_qb_access_impl: BeginSession OK, ticket: " + ticket);
+                        Log.Information("Access granted");
                         r = true;
                     }
                     catch (Exception ex)
@@ -525,11 +569,13 @@ namespace apic
                     {
                         if (ticket != null)
                         {
+                            Log.Information("Test_qb_access_impl: EndSession");
                             Rp.EndSession(ticket);
                             Rp = null;
                         }
                         if (Rp != null)
                         {
+                            Log.Information("Test_qb_access_impl: CloseConnection");
                             Rp.CloseConnection();
                             Rp = null;
                         }
@@ -583,13 +629,10 @@ namespace apic
 
             string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDoc‌​uments), "", "apic_config.toml");
             Config_file = path;
-            //Console.WriteLine(path);
-            // System.IO.Directory.CreateDirectory(path);
-
-
-            //string path = "configuration.toml";
+            Console.WriteLine("...config path: " + path);
             if (!File.Exists(path))
             {
+                Console.WriteLine("...config missing, creating default at " + path);
                 Console.WriteLine("file does not exists");
                 Log.Information("configuration.toml does not exists, create a new one");
                 TomlTable toml = new TomlTable
@@ -613,10 +656,24 @@ namespace apic
 
             }
 
+            else
+            {
+                Console.WriteLine("...config exists, loading");
+            }
+
             using (StreamReader reader = File.OpenText(path))
             {
-                TomlTable config = TOML.Parse(reader);
-                return config;
+                try
+                {
+                    TomlTable config = TOML.Parse(reader);
+                    Console.WriteLine("...config parsed OK, quickbooks_file=" + config["quickbooks_file"]);
+                    return config;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("...config parse FAILED: " + e);
+                    throw;
+                }
             }
         }
 
