@@ -54,3 +54,11 @@ x64/
 
 
 
+
+*.pfx
+*.pvk
+.env
+.env.*
+logs/
+apic.exe
+apic_config.toml

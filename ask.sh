@@ -1,57 +1,96 @@
-echo -e "What would you like to do? Enter a Task ID from the list below: \n"
-echo -e "TaskID\tFile\t\tDescription"
-echo -e "1\t Build "
-echo -e "2\t Run "
-echo -e "3\t Restores dependencies and tools of a project"
-echo -e "4\t List All Packages/Libraries with versions "
-echo -e "5\t "
-echo -e "6\t "
-echo -e "7\t "
-echo -e "8\t "
-echo -e "9\t "
+#!/bin/sh
 
-until [ "$task" = "0" ]; do
-  read task
+ROOT=$(cd "$(dirname "$0")" && pwd)
+TASKS_DIR="$ROOT/ask.d"
 
-  if [ "$task" = "1" ]; then
-    echo "...${task}"
-    dotnet publish apic/apic.csproj -c Release -r linux-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
+task_meta() {
+  sed -n "s/^# $2: //p" "$1" | head -n1
+}
 
-  elif [ "$task" = "2" ]; then
-    echo "...${task}"
-    dotnet publish apic/apic.csproj -c Release -r linux-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
-    apic/bin/Release/net10.0/linux-x64/apic
+task_id() {
+  task_meta "$1" id
+}
 
-  elif [ "$task" = "3" ]; then
-    echo "...${task}"
-    dotnet restore
-    #scp  log/bin/Release/net10.0/linux-x64//publish/log  root@192.168.80.241:/opt/
-    #scp  stock/bin/Release/net10.0/linux-x64//publish/stock  root@192.168.80.241:/opt/
-  elif [ "$task" = "4" ]; then
-    echo "...${task}"
-    dotnet list package
+group_rank() {
+  case "$1" in
+    APIC) printf '1' ;;
+    *) printf '9' ;;
+  esac
+}
 
-  elif [ "$task" = "5" ]; then
-    echo "...${task}"
+list_tasks() {
+  for f in "$TASKS_DIR"/*.sh; do
+    [ -f "$f" ] || continue
+    [ "${f##*/}" = "lib.sh" ] && continue
+    groups=$(task_meta "$f" group | tr ',' ' ')
+    id=$(task_id "$f")
+    desc=$(task_meta "$f" desc)
+    for group in $groups; do
+      [ -n "$group" ] || continue
+      printf '%s|%s|%s|%s|%s\n' "$(group_rank "$group")" "$id" "$group" "$desc" "$f"
+    done
+  done | sort -t'|' -k1,1n -k2,2n
+}
 
-  elif [ "$task" = "6" ]; then
-    echo "...${task}"
+show_menu() {
+  printf "%s\n" '  ┌─────┬──────────────────────────────────────────────┐'
+  printf '  │  ID │ %-44s │\n' "Description"
+  printf "%s\n" '  ├─────┼──────────────────────────────────────────────┤'
+  last_group=""
+  list_tasks | while IFS='|' read -r rank id group desc file; do
+    if [ "$group" != "$last_group" ]; then
+      [ -z "$last_group" ] || printf "%s\n" '  ├─────┼──────────────────────────────────────────────┤'
+      printf '  │     │ %-44s │\n' "$group"
+      last_group=$group
+    fi
+    printf '  │ %2s  │ %-44s │\n' "$id" "$desc"
+  done
+  printf "%s\n" '  ├─────┼──────────────────────────────────────────────┤'
+  printf '  │ %2s  │ %-44s │\n' "0" "Exit"
+  printf "%s\n" '  └─────┴──────────────────────────────────────────────┘'
+}
 
-  elif [ "$task" = "7" ]; then
-    echo "...${task}"
+printf "\n  APIC — Task Runner\n\n"
 
-  elif [ "$task" = "8" ]; then
-    echo "...${task}"
+while true; do
+  show_menu
 
-  elif [ "$task" = "9" ]; then
-    echo "...${task}"
+  printf "  Enter Task ID: "
+  read task || exit 0
 
-  else
-    echo "Goodbye! - Exit"
+  if [ "$task" = "0" ]; then
+    printf "  Goodbye!\n"
+    exit 0
   fi
 
-  sleep 3
+  task=${task#0}
+  case "$task" in
+    ''|*[!0-9]*)
+      printf "  Unknown task: %s\n" "$task"
+      sleep 2
+      printf "\n"
+      continue
+      ;;
+  esac
 
-  ./ask.sh
+  task_file=""
+  for f in "$TASKS_DIR"/*.sh; do
+    [ -f "$f" ] || continue
+    [ "${f##*/}" = "lib.sh" ] && continue
+    if [ "$(task_id "$f")" = "$task" ]; then
+      task_file=$f
+      break
+    fi
+  done
 
+  if [ -n "$task_file" ]; then
+    sh "$task_file"
+    rc=$?
+    [ "$rc" -eq 0 ] || printf "  Task %s exited with code %s.\n" "$task" "$rc"
+  else
+    printf "  Unknown task: %s\n" "$task"
+  fi
+
+  sleep 2
+  printf "\n"
 done

@@ -1,4 +1,6 @@
-dotnet publish apic/apic.csproj -c Release -r linux-x64 /p:PublishSingleFile=true /p:PublishTrimmed=true
-
-#scp  log/bin/Release/net10.0/linux-x64//publish/log  root@192.168.80.241:/opt/
-#scp  stock/bin/Release/net10.0/linux-x64//publish/stock  root@192.168.80.241:/opt/
+#!/bin/sh
+ROOT=$(cd "$(dirname "$0")" && pwd)
+cd "$ROOT" || exit 1
+dotnet publish apic/apic.csproj -c Release -r win-x64 /p:PublishSingleFile=true || exit 1
+cp apic/bin/Release/net10.0-windows/win-x64/publish/apic.exe apic.exe || exit 1
+printf "...Copied to %s\n" "$ROOT/apic.exe"
